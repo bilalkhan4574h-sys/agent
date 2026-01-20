@@ -1,0 +1,48 @@
+# Visual Studio / .NET defaults
+.vs/
+.vscode/
+.idea/
+
+# Build outputs
+bin/
+obj/
+**/bin/
+**/obj/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+
+# Rider
+*.sln.iml
+
+# JetBrains Rider caches
+_ReSharper*/
+*.DotSettings.user
+
+# EF database files
+*.dbmdl
+
+# Logs
+*.log
+logs/
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Test results
+TestResults/
+
+# dotnet user-secrets
+secrets.json
