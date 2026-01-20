@@ -33,14 +33,32 @@ namespace WeatherAgent
                             .GetSection("Foundry")
                             .Get<FoundryConfiguration>();
 
-                        kernelBuilder.AddOpenAIChatCompletion(
-                            modelId: foundryConfig!.ModelId,
-                            endpoint: new Uri(foundryConfig.Endpoint),
-                            apiKey: foundryConfig.ApiKey
-                        );
+                        if (foundryConfig != null &&
+                            !string.IsNullOrWhiteSpace(foundryConfig.Endpoint) &&
+                            !string.IsNullOrWhiteSpace(foundryConfig.ModelId))
+                        {
+                            try
+                            {
+                                kernelBuilder.AddOpenAIChatCompletion(
+                                    modelId: foundryConfig.ModelId,
+                                    endpoint: new Uri(foundryConfig.Endpoint),
+                                    apiKey: foundryConfig.ApiKey
+                                );
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Warning: failed to configure Foundry chat completion: {ex.Message}");
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("Foundry configuration missing or incomplete — starting kernel without chat completion.");
+                        }
 
                         return kernelBuilder.Build();
                     });
+
+                    services.AddSingleton<WeatherAgent.Agent.PluginFunctionRegistry>();
 
                     services.AddSingleton<IFoundryPlanner, FoundryPlanner>();
                     services.AddSingleton<IWeatherAgent, Agent.WeatherAgent>();

@@ -12,6 +12,12 @@ namespace WeatherAgent.Agent
 
     public class FoundryPlanner : IFoundryPlanner
     {
+        private readonly PluginFunctionRegistry _functionRegistry;
+
+        public FoundryPlanner(PluginFunctionRegistry functionRegistry)
+        {
+            _functionRegistry = functionRegistry;
+        }
         private const string SystemPrompt = @"You are a helpful weather assistant with access to various tools for weather, location, and time information.
 
     When a user asks a question:
@@ -65,7 +71,25 @@ namespace WeatherAgent.Agent
                     kernel,
                     cancellationToken);
 
-                return FormatResponse(response.Content ?? "No response generated.");
+                var raw = response.Content ?? string.Empty;
+
+                // Try to detect a tool invocation instruction from the model.
+                // Expecting a simple directive like: CALL_TOOL: <ToolName> | param1=value1;param2=value2
+                var toolInvocation = ParseToolInvocation(raw);
+
+                if (toolInvocation != null)
+                {
+                    var toolResult = await InvokeKernelFunctionAsync(kernel, toolInvocation, cancellationToken);
+                    // Append tool result to the model response for final formatting.
+                    var combined = new StringBuilder();
+                    combined.AppendLine(raw.Trim());
+                    combined.AppendLine();
+                    combined.AppendLine("--- TOOL OUTPUT ---");
+                    combined.AppendLine(toolResult);
+                    return FormatResponse(combined.ToString());
+                }
+
+                return FormatResponse(raw == string.Empty ? "No response generated." : raw);
             }
             catch (Exception ex)
             {
@@ -87,6 +111,66 @@ namespace WeatherAgent.Agent
                 }
 
                 return $"❌ Planning Error: {ex.Message}";
+            }
+        }
+
+        private record ToolInvocation(string ToolName, Dictionary<string, string> Parameters);
+
+        private ToolInvocation? ParseToolInvocation(string content)
+        {
+            if (string.IsNullOrWhiteSpace(content)) return null;
+
+            // Normalize and look for a CALL_TOOL marker
+            var lines = content.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                                .Select(l => l.Trim())
+                                .ToArray();
+
+            foreach (var line in lines)
+            {
+                if (line.StartsWith("CALL_TOOL:", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Format: CALL_TOOL: ToolName | key1=val1;key2=val2
+                    var parts = line.Substring("CALL_TOOL:".Length).Split('|', 2);
+                    var toolName = parts[0].Trim();
+                    var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                    if (parts.Length > 1)
+                    {
+                        var paramPart = parts[1];
+                        var pairs = paramPart.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                        foreach (var pair in pairs)
+                        {
+                            var kv = pair.Split('=', 2);
+                            if (kv.Length == 2)
+                            {
+                                parameters[kv[0].Trim()] = kv[1].Trim();
+                            }
+                        }
+                    }
+
+                    return new ToolInvocation(toolName, parameters);
+                }
+            }
+
+            return null;
+        }
+
+        private async Task<string> InvokeKernelFunctionAsync(Kernel kernel, ToolInvocation invocation, CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (!_functionRegistry.TryGet(invocation.ToolName, out var invoker) || invoker == null)
+                {
+                    return $"Tool '{invocation.ToolName}' not found among registered functions.";
+                }
+
+                var result = await invoker(invocation.Parameters, cancellationToken);
+
+                return result ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                return $"Error invoking tool '{invocation.ToolName}': {ex.Message}";
             }
         }
 

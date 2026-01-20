@@ -14,17 +14,20 @@ namespace WeatherAgent
         private readonly IConfiguration _configuration;
         private readonly Kernel _kernel;
         private readonly IHostApplicationLifetime _lifetime;
+        private readonly PluginFunctionRegistry _functionRegistry;
 
         public WeatherAgentService(
             IWeatherAgent agent,
             IConfiguration configuration,
             Kernel kernel,
-            IHostApplicationLifetime lifetime)
+            IHostApplicationLifetime lifetime,
+            PluginFunctionRegistry functionRegistry)
         {
             _agent = agent;
             _configuration = configuration;
             _kernel = kernel;
             _lifetime = lifetime;
+            _functionRegistry = functionRegistry;
         }
 
         public async Task StartAsync(CancellationToken cancellationToken)
@@ -116,6 +119,16 @@ namespace WeatherAgent
                             HttpClient = httpClient,
                             IgnoreNonCompliantErrors = true
                         });
+
+                    // Register imported functions with the central registry so planners can call them
+                    try
+                    {
+                        _functionRegistry.RegisterFunctions(importedPlugin, _kernel);
+                    }
+                    catch
+                    {
+                        // ignore registration failures
+                    }
 
                     Console.WriteLine($"  ✅ Plugin '{plugin.PluginName}' imported successfully");
                     Console.WriteLine($"     Functions imported: {importedPlugin.Count()}");
